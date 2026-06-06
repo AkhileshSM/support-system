@@ -1,0 +1,148 @@
+# ═══════════════════════════════════════════════════════════════
+#  Customer Support Multi-Agent System
+#  AgentField + 4 Python Agents + React UI + nginx
+#  LLM: local Ollama (host.docker.internal)
+# ═══════════════════════════════════════════════════════════════
+
+networks:
+  agentfield-net:
+    driver: bridge
+
+volumes:
+  agentfield-data:
+
+services:
+
+  # ── 1. CONTROL PLANE ──────────────────────────────────────
+  agentfield-server:
+    image: agentfield/control-plane:latest
+    container_name: agentfield-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - agentfield-data:/data
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_STORAGE_MODE=local
+      - AGENTFIELD_HTTP_ADDR=0.0.0.0:8080
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # ── 2. ORCHESTRATOR AGENT ─────────────────────────────────
+  orchestrator:
+    build:
+      context: ./agents/orchestrator
+    container_name: orchestrator
+    restart: unless-stopped
+    depends_on:
+      agentfield-server:
+        condition: service_started
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield-server:8080
+      - AGENT_CALLBACK_URL=http://orchestrator:9001
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - AGENT_NODE_ID=triage-orchestrator
+      - AGENT_PORT=9001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 3. SENTIMENT AGENT ────────────────────────────────────
+  sentiment-agent:
+    build:
+      context: ./agents/sentiment
+    container_name: sentiment-agent
+    restart: unless-stopped
+    depends_on:
+      agentfield-server:
+        condition: service_started
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield-server:8080
+      - AGENT_CALLBACK_URL=http://sentiment-agent:9002
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - AGENT_NODE_ID=sentiment-agent
+      - AGENT_PORT=9002
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 4. SLA AGENT ──────────────────────────────────────────
+  sla-agent:
+    build:
+      context: ./agents/sla
+    container_name: sla-agent
+    restart: unless-stopped
+    depends_on:
+      agentfield-server:
+        condition: service_started
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield-server:8080
+      - AGENT_CALLBACK_URL=http://sla-agent:9003
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - AGENT_NODE_ID=sla-agent
+      - AGENT_PORT=9003
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 5. ESCALATION AGENT ───────────────────────────────────
+  escalation-agent:
+    build:
+      context: ./agents/escalation
+    container_name: escalation-agent
+    restart: unless-stopped
+    depends_on:
+      agentfield-server:
+        condition: service_started
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield-server:8080
+      - AGENT_CALLBACK_URL=http://escalation-agent:9004
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - AGENT_NODE_ID=escalation-agent
+      - AGENT_PORT=9004
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 6. REACT UI + NGINX REVERSE PROXY ─────────────────────
+  ui:
+    build:
+      context: ./ui
+      args:
+        - VITE_API_BASE=/api
+    container_name: support-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - agentfield-server
+    networks:
+      - agentfield-net
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro

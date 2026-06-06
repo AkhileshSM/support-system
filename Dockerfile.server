@@ -1,0 +1,21 @@
+# ═══════════════════════════════════════════════════════════════
+#  AgentField Control Plane — use the official Docker image
+# ═══════════════════════════════════════════════════════════════
+#
+# This Dockerfile is intentionally EMPTY / unused.
+# The docker-compose.yml should reference the official image directly:
+#
+#   control-plane:
+#     image: agentfield/control-plane:latest
+#
+# See docker-compose.yml for the correct configuration.
+# ═══════════════════════════════════════════════════════════════
+#
+# IMPORTANT: Do NOT build a custom control plane image.
+# The official image contains the pre-built Go binary with all
+# features: DID/VC, workflow DAG, memory, discovery, health.
+#
+# If you previously used: curl -sSf https://agentfield.ai/get | sh
+# that approach is for LOCAL dev only, not Docker.
+# ═══════════════════════════════════════════════════════════════
+FROM agentfield/control-plane:latest
