@@ -173,92 +173,168 @@ export default function App() {
 
         {/* ════════════ ARCHITECTURE TAB ════════════ */}
         {activeTab === 'about' && (
-          <div style={styles.singleCol}>
-            <div style={styles.archCard}>
-              <div style={styles.archTitle}>System Architecture</div>
-              <p style={styles.archDesc}>
-                This system runs 7 Docker containers connected via an internal bridge network.
-                All inter-agent communication flows through the AgentField control plane — never directly between agents.
-                A local Ollama decision gate can skip sentiment and routing on easy tickets.
-              </p>
-
-              {/* Architecture diagram */}
-              <div style={styles.archDiagram}>
-                {/* UI */}
-                <div style={styles.archBox('#38bdf8')}>
-                  <div style={styles.archBoxTitle}>React UI</div>
-                  <div style={styles.archBoxSub}>Port 3000</div>
-                  <div style={styles.archBoxDetail}>Nginx reverse proxy</div>
-                </div>
-                <div style={styles.archArrow}>→</div>
-                {/* Control plane */}
-                <div style={styles.archBox('#a78bfa')}>
-                  <div style={styles.archBoxTitle}>AgentField</div>
-                  <div style={styles.archBoxSub}>Control Plane · Port 8080</div>
-                  <div style={styles.archBoxDetail}>Routing · Memory · DAG · Policy</div>
-                </div>
-                <div style={styles.archArrow}>→</div>
-                {/* Agents */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { label: 'triage-orchestrator', port: 9001, color: '#38bdf8' },
-                    { label: 'gate-agent',          port: 9005, color: '#c4b5fd' },
-                    { label: 'sentiment-agent',     port: 9002, color: '#fbbf24' },
-                    { label: 'sla-agent',           port: 9003, color: '#34d399' },
-                    { label: 'escalation-agent',    port: 9004, color: '#f87171' },
-                  ].map(a => (
-                    <div key={a.label} style={{ ...styles.archBox(a.color), padding: '8px 14px' }}>
-                      <div style={{ ...styles.archBoxTitle, fontSize: 12 }}>{a.label}</div>
-                      <div style={{ ...styles.archBoxSub, fontSize: 10 }}>Port {a.port}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tech stack table */}
-              <div style={styles.stackGrid}>
-                {[
-                  { layer: 'Frontend',       tech: 'React 18 + Vite',          note: 'Served by nginx in Docker' },
-                  { layer: 'Reverse Proxy',  tech: 'nginx',                     note: '/api/* → agentfield-server:8080' },
-                  { layer: 'Control Plane',  tech: 'AgentField (Go binary)',     note: 'Routing, memory, DAG tracking, audit' },
-                  { layer: 'Orchestrator',   tech: 'Python 3.11 + agentfield',  note: 'Gate fast path, or full AI routing' },
-                  { layer: 'Decision gate',  tech: 'Ollama /v1/systemone',       note: 'tev1:0.8b — one typed call, then fall back' },
-                  { layer: 'Sentiment',      tech: 'Python + Ollama',            note: 'Full path only. Structured Pydantic output' },
-                  { layer: 'SLA',            tech: 'Python (Skill — no LLM)',   note: 'Pure deterministic lookup' },
-                  { layer: 'Escalation',     tech: 'Python + Ollama',            note: 'AI-drafted alerts, global memory' },
-                  { layer: 'Networking',     tech: 'Docker bridge network',      note: 'Agents communicate via agentfield-net' },
-                ].map(row => (
-                  <div key={row.layer} style={styles.stackRow}>
-                    <span style={styles.stackLayer}>{row.layer}</span>
-                    <span style={styles.stackTech}>{row.tech}</span>
-                    <span style={styles.stackNote}>{row.note}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Quick commands */}
-              <div style={styles.archCode}>
-                <div style={styles.archCodeTitle}>Quick Start</div>
-                <pre style={styles.archPre}>{`# 1. Copy env and pull the decision-gate model (Ollama >= 0.35)
-cp .env.example .env
-ollama pull tev1:0.8b
-
-# 2. Build and start everything
-docker compose up --build
-
-# 3. Open the UI
-open http://localhost:3000
-
-# 4. View AgentField dashboard
-open http://localhost:8080
-
-# 5. Watch logs for all agents
-docker compose logs -f`}</pre>
-              </div>
-            </div>
+          <div style={styles.archPage}>
+            <ArchitecturePanel />
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+const SERVICES = [
+  { label: 'triage-orchestrator', port: 9001, color: '#38bdf8', role: 'Reasoner · chooses fast or full' },
+  { label: 'gate-agent',          port: 9005, color: '#c4b5fd', role: 'Skill · one /v1/systemone call' },
+  { label: 'sentiment-agent',     port: 9002, color: '#fbbf24', role: 'Reasoner · full path only' },
+  { label: 'sla-agent',           port: 9003, color: '#34d399', role: 'Skill · SLA minutes, no LLM' },
+  { label: 'escalation-agent',    port: 9004, color: '#f87171', role: 'Reasoner · only if escalate' },
+]
+
+const FLOW = [
+  {
+    kicker: 'Every ticket',
+    color: '#a78bfa',
+    steps: [
+      'UI posts the ticket to triage-orchestrator.handle_ticket.',
+      'The orchestrator stores the ticket, then calls gate-agent.decide and sla-agent.get_policy together.',
+      'gate-agent sends subject, body, and account tier to Ollama POST /v1/systemone (tev1:0.8b).',
+      'A timeout, a missing model, or a bad response comes back as ok: false. The ticket continues.',
+    ],
+  },
+  {
+    kicker: 'Fast path',
+    color: '#34d399',
+    steps: [
+      'Used when the gate is ok, confidence is at least 0.7, urgency is not critical, and needs_escalation is false.',
+      'Enterprise accounts with high urgency stay on the full path, because that case already escalates.',
+      'Team and summary come from the gate. The summary is the subject, with no extra model call.',
+      'Sentiment on the result is filled in from the gate so the response shape stays the same.',
+      'sentiment-agent.analyze and the routing app.ai() call do not run.',
+    ],
+  },
+  {
+    kicker: 'Full path',
+    color: '#38bdf8',
+    steps: [
+      'Used when the gate is unsure, unavailable, marks the ticket critical, or flags escalation.',
+      'sentiment-agent.analyze reads tone, urgency, frustration, and threat.',
+      'The orchestrator app.ai() call picks team, summary, confidence, and whether to escalate.',
+      'Escalation runs only here. escalation-agent.create_case drafts the alert and stores the case.',
+    ],
+  },
+]
+
+const STACK = [
+  { layer: 'Frontend',      tech: 'React 18 + Vite',         note: 'Served by nginx in Docker on port 3000' },
+  { layer: 'Reverse Proxy', tech: 'nginx',                   note: '/api/* → agentfield-server:8080' },
+  { layer: 'Control Plane', tech: 'AgentField',              note: 'Routing, memory, execution DAG, audit' },
+  { layer: 'Orchestrator',  tech: 'Python 3.11 · port 9001', note: 'Gate plus SLA in parallel, then fast or full' },
+  { layer: 'Decision gate', tech: 'Ollama /v1/systemone',    note: 'gate-agent :9005 · tev1:0.8b · 3s timeout' },
+  { layer: 'Chat models',   tech: 'Ollama gemma4:31b-cloud', note: 'Sentiment, routing, and escalation on the full path' },
+  { layer: 'SLA',           tech: 'Python skill · port 9003', note: 'Deterministic minutes and priority boost' },
+  { layer: 'Escalation',    tech: 'Python · port 9004',      note: 'Alert draft stored in global memory' },
+  { layer: 'Models',        tech: 'Host Ollama :11434',      note: 'Containers use host.docker.internal, not localhost' },
+]
+
+export function ArchitecturePanel() {
+  return (
+    <div style={styles.archCard}>
+      <div style={styles.archTitle}>System Architecture</div>
+      <p style={styles.archDesc}>
+        Seven containers share the <span style={styles.inlineCode}>agentfield-net</span> bridge.
+        The UI talks only to the AgentField control plane, and agents call each other through that plane.
+        <span style={styles.inlineCode}>gate-agent</span> asks local Ollama
+        <span style={styles.inlineCode}>POST /v1/systemone</span> once.
+        A confident answer skips the sentiment and routing models. An unsure answer, a gate error, or an escalation candidate runs the original pipeline.
+      </p>
+
+      <div style={styles.archDiagram}>
+        <div style={styles.archBox('#38bdf8')}>
+          <div style={styles.archBoxTitle}>React UI</div>
+          <div style={styles.archBoxSub}>Port 3000</div>
+          <div style={styles.archBoxDetail}>Nginx serves the app and proxies /api</div>
+        </div>
+        <div style={styles.archArrow}>→</div>
+        <div style={styles.archBox('#a78bfa')}>
+          <div style={styles.archBoxTitle}>AgentField</div>
+          <div style={styles.archBoxSub}>Control plane · port 8080</div>
+          <div style={styles.archBoxDetail}>Routing · memory · DAG · audit</div>
+        </div>
+        <div style={styles.archArrow}>→</div>
+        <div style={styles.serviceCol}>
+          {SERVICES.map(service => (
+            <div key={service.label} style={{ ...styles.archBox(service.color), padding: '8px 14px', minWidth: 0, textAlign: 'left' }}>
+              <div style={{ ...styles.archBoxTitle, fontSize: 12 }}>{service.label}</div>
+              <div style={{ ...styles.archBoxSub, fontSize: 10 }}>Port {service.port}</div>
+              <div style={styles.archBoxDetail}>{service.role}</div>
+            </div>
+          ))}
+        </div>
+        <div style={styles.archArrow}>→</div>
+        <div style={styles.archBox('#c4b5fd')}>
+          <div style={styles.archBoxTitle}>Ollama</div>
+          <div style={styles.archBoxSub}>Host port 11434</div>
+          <div style={styles.archBoxDetail}>tev1:0.8b for the gate</div>
+          <div style={styles.archBoxDetail}>gemma4:31b-cloud for chat</div>
+        </div>
+      </div>
+
+      <div>
+        <div style={styles.blockLabel}>Ticket flow</div>
+        <div style={styles.pathGrid}>
+          {FLOW.map(column => (
+            <div key={column.kicker} style={{ ...styles.pathCard, borderColor: column.color + '55' }}>
+              <div style={{ ...styles.pathKicker, color: column.color }}>{column.kicker}</div>
+              <ol style={styles.stepList}>
+                {column.steps.map(step => (
+                  <li key={step} style={styles.step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div style={styles.blockLabel}>What the result adds</div>
+        <div style={styles.stackGrid}>
+          {[
+            { field: 'decision_path', detail: '"fast" or "full". Shown on the result and in history.' },
+            { field: 'gate', detail: 'Team, urgency, threat, escalation, frustration, confidence. ok: false carries the error.' },
+            { field: 'gate_latency_ms', detail: 'How long the /v1/systemone call took.' },
+          ].map(row => (
+            <div key={row.field} style={styles.stackRow}>
+              <span style={styles.stackTech}>{row.field}</span>
+              <span style={{ ...styles.stackNote, gridColumn: '2 / -1' }}>{row.detail}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={styles.stackGrid}>
+        {STACK.map(row => (
+          <div key={row.layer} style={styles.stackRow}>
+            <span style={styles.stackLayer}>{row.layer}</span>
+            <span style={styles.stackTech}>{row.tech}</span>
+            <span style={styles.stackNote}>{row.note}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.archCode}>
+        <div style={styles.archCodeTitle}>Quick Start</div>
+        <pre style={styles.archPre}>{`# Ollama 0.35 or newer, then the gate model
+ollama pull tev1:0.8b
+make pull-gate-model
+
+# Copy env. Containers reach Ollama at host.docker.internal:11434
+cp .env.example .env
+make up
+
+# UI and control plane
+open http://localhost:3000
+open http://localhost:8080`}</pre>
+      </div>
     </div>
   )
 }
@@ -329,6 +405,7 @@ const styles = {
   rightCol: { display: 'flex', flexDirection: 'column', gap: 16 },
 
   singleCol: { maxWidth: 900, margin: '0 auto', width: '100%' },
+  archPage: { maxWidth: 1040, margin: '0 auto', width: '100%' },
 
   emptyRight: {
     background: 'var(--bg2)', border: '1px solid var(--border)',
@@ -357,10 +434,36 @@ const styles = {
   archTitle: { fontSize: 18, fontWeight: 700, color: 'var(--text)' },
   archDesc: { fontSize: 14, color: 'var(--text2)', lineHeight: 1.7 },
   archDiagram: {
-    display: 'flex', alignItems: 'center', gap: 16,
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16,
     padding: 20, background: 'var(--bg3)',
     border: '1px solid var(--border)', borderRadius: 10,
-    overflowX: 'auto',
+  },
+  serviceCol: { display: 'flex', flexDirection: 'column', gap: 8, flex: '1 1 220px', minWidth: 200 },
+  blockLabel: {
+    fontSize: 11, fontWeight: 600, color: 'var(--text3)',
+    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
+  },
+  pathGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 12,
+  },
+  pathCard: {
+    background: 'var(--bg3)',
+    border: '1px solid var(--border)',
+    borderRadius: 10,
+    padding: '14px 14px 8px',
+  },
+  pathKicker: {
+    fontSize: 12, fontWeight: 700, letterSpacing: 0.4,
+    textTransform: 'uppercase', marginBottom: 8,
+  },
+  stepList: { margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 },
+  step: { fontSize: 12, color: 'var(--text2)', lineHeight: 1.55 },
+  inlineCode: {
+    fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+    color: 'var(--accent)', background: 'var(--bg3)',
+    padding: '1px 5px', borderRadius: 4, margin: '0 3px',
   },
   archArrow: { fontSize: 20, color: 'var(--text3)', flexShrink: 0 },
   archBox: (color) => ({
@@ -371,9 +474,10 @@ const styles = {
   archBoxSub: { fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text3)' },
   archBoxDetail: { fontSize: 10, color: 'var(--text3)', marginTop: 4 },
 
-  stackGrid: { display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' },
+  stackGrid: { display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto' },
   stackRow: {
-    display: 'grid', gridTemplateColumns: '140px 200px 1fr',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(110px, 150px) minmax(150px, 220px) minmax(180px, 1fr)',
     gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)',
     alignItems: 'center',
   },
