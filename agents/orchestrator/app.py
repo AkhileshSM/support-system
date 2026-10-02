@@ -34,6 +34,7 @@ _URGENCIES = {"low", "medium", "high", "critical"}
 
 
 def _confidence_min() -> float:
+    """Read GATE_CONFIDENCE_MIN. Invalid or out-of-range values fall back to 0.7."""
     raw = os.environ.get("GATE_CONFIDENCE_MIN", "0.7")
     try:
         value = float(raw)
@@ -72,6 +73,8 @@ install_shutdown_handler(app)
 
 # ── Output schemas ────────────────────────────────────────────
 class TicketRoute(BaseModel):
+    """Routing result shared by the fast path and the full app.ai() path."""
+
     team: str             # "support-engineering" | "billing" | "general" | "sales"
     escalate: bool        # True if this needs immediate human attention
     summary: str          # One-line summary for the queue
@@ -79,6 +82,7 @@ class TicketRoute(BaseModel):
 
 
 def _valid_frustration(value) -> bool:
+    """True for a whole number from 1 to 10. Booleans are rejected."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
     if isinstance(value, float) and not value.is_integer():
@@ -116,6 +120,7 @@ def _fast_path_eligible(gate: dict, account_tier: str) -> bool:
 
 
 def _full_path_reason(gate: dict, account_tier: str) -> str:
+    """Short note explaining why this ticket stayed on the full path."""
     if not isinstance(gate, dict) or gate.get("ok") is not True:
         error = gate.get("error") if isinstance(gate, dict) else "no response"
         return f"gate unavailable ({error})"

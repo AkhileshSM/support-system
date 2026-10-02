@@ -86,6 +86,7 @@ SLA_MINUTES = {"enterprise": 30, "pro": 120, "free": 1440}
 
 
 def expected_escalate(ticket: dict) -> bool:
+    """Label rule: escalate when urgency is critical, or the account is enterprise and urgency is high."""
     if ticket["urgency"] == "critical":
         return True
     if ticket["account_tier"] == "enterprise" and ticket["urgency"] == "high":
@@ -94,6 +95,7 @@ def expected_escalate(ticket: dict) -> bool:
 
 
 def validate_tickets(tickets: list[dict]) -> None:
+    """Reject a labeled set that is the wrong size, duplicated, or inconsistent with the escalate rule."""
     if not 30 <= len(tickets) <= 50:
         raise SystemExit(f"expected 30-50 tickets, found {len(tickets)}")
     seen = set()
@@ -121,6 +123,7 @@ def validate_tickets(tickets: list[dict]) -> None:
 
 
 def env_float(name: str, default: float) -> float:
+    """Read a float from the environment. A blank or invalid value returns the default."""
     raw = os.environ.get(name)
     if raw is None or raw == "":
         return default
@@ -131,6 +134,7 @@ def env_float(name: str, default: float) -> float:
 
 
 def model_name(raw: str) -> str:
+    """Strip a leading ollama/ prefix so the name matches the Ollama API."""
     name = raw.strip()
     if name.startswith("ollama/"):
         name = name[len("ollama/"):]
@@ -138,6 +142,7 @@ def model_name(raw: str) -> str:
 
 
 def percentile(values: list[float], pct: float) -> float | None:
+    """Linear-interpolated percentile. An empty list returns None."""
     if not values:
         return None
     ordered = sorted(values)
@@ -151,6 +156,7 @@ def percentile(values: list[float], pct: float) -> float | None:
 
 
 def http_json(url: str, payload: dict, timeout: float) -> tuple[dict | None, str | None]:
+    """POST JSON with urllib. Returns (body, None) or (None, error)."""
     raw = json.dumps(payload).encode()
     request = urllib.request.Request(
         url,
@@ -174,6 +180,7 @@ def http_json(url: str, payload: dict, timeout: float) -> tuple[dict | None, str
 
 
 def parse_json_content(content: str) -> dict | None:
+    """Parse chat content, including a fenced JSON block or JSON embedded in a sentence."""
     text = (content or "").strip()
     if text.startswith("```"):
         text = text.strip("`")
@@ -195,12 +202,14 @@ def parse_json_content(content: str) -> dict | None:
 
 
 def norm_token(value) -> str:
+    """Lowercase a label and turn spaces or underscores into hyphens."""
     if not isinstance(value, str):
         return ""
     return "-".join(value.strip().lower().replace("_", "-").split())
 
 
 def as_bool(value):
+    """Coerce a model bool. true/yes/1 and false/no/0 are accepted. Anything else returns None."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -213,6 +222,7 @@ def as_bool(value):
 
 
 def ollama_chat(base: str, model: str, system: str, user: str, timeout: float):
+    """One POST /api/chat call. Returns (parsed JSON, latency_ms, error)."""
     started = time.perf_counter()
     data, error = http_json(
         base.rstrip("/") + "/api/chat",
@@ -238,6 +248,7 @@ def ollama_chat(base: str, model: str, system: str, user: str, timeout: float):
 
 
 def run_existing(base: str, model: str, ticket: dict, timeout: float) -> dict:
+    """Replay sentiment, then routing. A failed call returns ok false and does not raise."""
     sentiment, sentiment_ms, sentiment_error = ollama_chat(
         base,
         model,
@@ -291,6 +302,7 @@ def run_existing(base: str, model: str, ticket: dict, timeout: float) -> dict:
 
 
 def run_gate(base: str, model: str, ticket: dict, timeout: float) -> dict:
+    """One /v1/systemone call, normalized the same way the gate agent normalizes it."""
     _state, payload = build_request(model, ticket["subject"], ticket["body"], ticket["account_tier"])
     started = time.perf_counter()
     data, error = http_json(base.rstrip("/") + "/v1/systemone", payload, timeout)
@@ -323,7 +335,10 @@ def run_gate(base: str, model: str, ticket: dict, timeout: float) -> dict:
 
 
 class Scoreboard:
+    """Accuracy, error, latency, and fast-path counts for one evaluated path."""
+
     def __init__(self, path: str, model: str, track_fast: bool):
+        """Start an empty board. track_fast is true only for a gate path."""
         self.path = path
         self.model = model
         self.track_fast = track_fast
@@ -336,6 +351,7 @@ class Scoreboard:
         self.n = 0
 
     def add(self, ticket: dict, result: dict) -> None:
+        """Score one ticket. A missing prediction counts as a field error."""
         self.n += 1
         if result.get("latency_ms") is not None and result.get("ok"):
             self.latencies.append(float(result["latency_ms"]))
@@ -362,18 +378,21 @@ class Scoreboard:
 
 
 def fmt_pct(correct: int, total: int) -> str:
+    """Format accuracy as a percent. Zero scored tickets print an em dash."""
     if total == 0:
         return "—"
     return f"{(100.0 * correct / total):5.1f}%"
 
 
 def fmt_ms(value: float | None) -> str:
+    """Format milliseconds for the report table. None prints an em dash."""
     if value is None:
         return "—"
     return f"{value:8.0f}"
 
 
 def print_report(boards: list[Scoreboard], ticket_count: int, confidence_min: float) -> None:
+    """Print per-field accuracy and latency tables to stdout."""
     print()
     print(f"Decision-gate evaluation  ({ticket_count} tickets)")
     print(f"Fast path when confidence >= {confidence_min:.2f}, urgency is not critical,")
@@ -411,6 +430,7 @@ def print_report(boards: list[Scoreboard], ticket_count: int, confidence_min: fl
 
 
 def dataset_table(tickets: list[dict]) -> None:
+    """Print team, urgency, and escalation counts for the labeled set."""
     print(f"Labeled tickets: {len(tickets)}  (UI presets: {len(UI_PRESET_IDS)})")
     print(f"{'team':<22} {'n':>4}")
     for team in TEAMS:
@@ -425,6 +445,7 @@ def dataset_table(tickets: list[dict]) -> None:
 
 
 def main() -> None:
+    """Validate the dataset, run the requested paths, and print the report."""
     parser = argparse.ArgumentParser(description="Compare triage paths on labeled tickets.")
     parser.add_argument("--limit", type=int, default=0, help="Evaluate only the first N tickets.")
     parser.add_argument("--skip-baseline", action="store_true", help="Do not run the two chat calls.")

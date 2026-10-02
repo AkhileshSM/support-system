@@ -32,6 +32,7 @@ SYSTEMONE_MODEL   = os.environ.get("SYSTEMONE_MODEL", "tev1:0.8b")
 
 
 def _timeout_seconds() -> float:
+    """Read SYSTEMONE_TIMEOUT_S. Invalid or non-positive values fall back to 3."""
     raw = os.environ.get("SYSTEMONE_TIMEOUT_S", "3")
     try:
         value = float(raw)
@@ -62,6 +63,7 @@ install_shutdown_handler(app)
 
 
 def _error_detail(resp: httpx.Response) -> str:
+    """Prefer Ollama's JSON error field, then the response body, capped at 300 characters."""
     try:
         data = resp.json()
         if isinstance(data, dict) and data.get("error"):

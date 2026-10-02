@@ -264,6 +264,7 @@ def fast_path_eligible(gate: dict, confidence_min: float, account_tier: str) -> 
 
 
 def _require_answer(answers: dict, name: str, expected_type: str) -> dict:
+    """Return one answer object, or raise ValueError when it is missing or the wrong type."""
     answer = answers.get(name)
     if not isinstance(answer, dict):
         raise ValueError(f"missing answer for {name}")
@@ -273,6 +274,7 @@ def _require_answer(answers: dict, name: str, expected_type: str) -> dict:
 
 
 def _probability(value, name: str) -> float:
+    """Parse a noul probability and reject values outside 0..1."""
     probability = float(value)
     if probability < 0 or probability > 1:
         raise ValueError(f"{name} probability {probability} outside 0..1")
@@ -280,6 +282,7 @@ def _probability(value, name: str) -> float:
 
 
 def _valid_frustration(value) -> bool:
+    """True for a whole number from 1 to 10. Booleans are rejected."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
     if isinstance(value, float) and not value.is_integer():
@@ -288,4 +291,5 @@ def _valid_frustration(value) -> bool:
 
 
 def _clamp01(value: float) -> float:
+    """Clamp a confidence into the closed interval 0..1."""
     return max(0.0, min(1.0, float(value)))

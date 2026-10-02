@@ -53,6 +53,7 @@ def wait_for_control_plane(
 def install_shutdown_handler(app) -> None:
     """Install SIGTERM/SIGINT handlers for graceful Docker stop."""
     def _handle(signum, frame):
+        """Exit cleanly when Docker sends SIGTERM or the user hits Ctrl-C."""
         log.info(f"Received signal {signum}, shutting down ...")
         sys.exit(0)
 
