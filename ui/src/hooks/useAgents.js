@@ -7,6 +7,15 @@ import { listAgents, getHealth } from '../utils/api'
 
 const POLL_MS = 8000
 
+// Agents the status bar always shows, even before the control plane lists them.
+export const KNOWN_AGENTS = [
+  { id: 'triage-orchestrator', label: 'Orchestrator', icon: '🎯' },
+  { id: 'gate-agent',          label: 'Gate',         icon: '🚦' },
+  { id: 'sentiment-agent',     label: 'Sentiment',    icon: '💬' },
+  { id: 'sla-agent',           label: 'SLA',          icon: '⏱️' },
+  { id: 'escalation-agent',    label: 'Escalation',   icon: '🚨' },
+]
+
 export function useAgents() {
   const [agents, setAgents]         = useState([])
   const [cpHealth, setCpHealth]     = useState('unknown') // 'ok' | 'down' | 'unknown'

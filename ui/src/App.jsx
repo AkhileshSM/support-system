@@ -148,10 +148,10 @@ export default function App() {
                   <div style={styles.emptyRightTitle}>Ready to triage</div>
                   <div style={styles.emptyRightDesc}>
                     Fill in the form and click <strong>Run Triage Pipeline</strong>.<br/>
-                    Your ticket will flow through 4 AI agents in real time.
+                    Your ticket will flow through the decision gate, then the rest of the pipeline.
                   </div>
                   <div style={styles.flowPreview}>
-                    {['📥 Intake', '⚡ Fan-out', '💬 Sentiment', '⏱️ SLA', '🎯 Route', '🚨 Escalate?'].map((s, i, arr) => (
+                    {['📥 Intake', '🚦 Gate', '⏱️ SLA', '💬 Sentiment', '🎯 Route', '🚨 Escalate?'].map((s, i, arr) => (
                       <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={styles.flowStep}>{s}</span>
                         {i < arr.length - 1 && <span style={{ color: 'var(--text3)' }}>→</span>}
@@ -177,8 +177,9 @@ export default function App() {
             <div style={styles.archCard}>
               <div style={styles.archTitle}>System Architecture</div>
               <p style={styles.archDesc}>
-                This system runs 6 Docker containers connected via an internal bridge network.
+                This system runs 7 Docker containers connected via an internal bridge network.
                 All inter-agent communication flows through the AgentField control plane — never directly between agents.
+                A local Ollama decision gate can skip sentiment and routing on easy tickets.
               </p>
 
               {/* Architecture diagram */}
@@ -201,6 +202,7 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[
                     { label: 'triage-orchestrator', port: 9001, color: '#38bdf8' },
+                    { label: 'gate-agent',          port: 9005, color: '#c4b5fd' },
                     { label: 'sentiment-agent',     port: 9002, color: '#fbbf24' },
                     { label: 'sla-agent',           port: 9003, color: '#34d399' },
                     { label: 'escalation-agent',    port: 9004, color: '#f87171' },
@@ -219,10 +221,11 @@ export default function App() {
                   { layer: 'Frontend',       tech: 'React 18 + Vite',          note: 'Served by nginx in Docker' },
                   { layer: 'Reverse Proxy',  tech: 'nginx',                     note: '/api/* → agentfield-server:8080' },
                   { layer: 'Control Plane',  tech: 'AgentField (Go binary)',     note: 'Routing, memory, DAG tracking, audit' },
-                  { layer: 'Orchestrator',   tech: 'Python 3.11 + agentfield',  note: 'Parallel fan-out, AI routing' },
-                  { layer: 'Sentiment',      tech: 'Python + Claude Sonnet',     note: 'Structured output via Pydantic' },
+                  { layer: 'Orchestrator',   tech: 'Python 3.11 + agentfield',  note: 'Gate fast path, or full AI routing' },
+                  { layer: 'Decision gate',  tech: 'Ollama /v1/systemone',       note: 'tev1:0.8b — one typed call, then fall back' },
+                  { layer: 'Sentiment',      tech: 'Python + Ollama',            note: 'Full path only. Structured Pydantic output' },
                   { layer: 'SLA',            tech: 'Python (Skill — no LLM)',   note: 'Pure deterministic lookup' },
-                  { layer: 'Escalation',     tech: 'Python + Claude Sonnet',     note: 'AI-drafted alerts, global memory' },
+                  { layer: 'Escalation',     tech: 'Python + Ollama',            note: 'AI-drafted alerts, global memory' },
                   { layer: 'Networking',     tech: 'Docker bridge network',      note: 'Agents communicate via agentfield-net' },
                 ].map(row => (
                   <div key={row.layer} style={styles.stackRow}>
@@ -236,9 +239,9 @@ export default function App() {
               {/* Quick commands */}
               <div style={styles.archCode}>
                 <div style={styles.archCodeTitle}>Quick Start</div>
-                <pre style={styles.archPre}>{`# 1. Copy and fill your API key
+                <pre style={styles.archPre}>{`# 1. Copy env and pull the decision-gate model (Ollama >= 0.35)
 cp .env.example .env
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+ollama pull tev1:0.8b
 
 # 2. Build and start everything
 docker compose up --build

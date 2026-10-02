@@ -17,16 +17,16 @@ const STAGES = [
     label: 'Fan-out',
     agent: 'parallel',
     icon: '⚡',
-    desc: 'Sentiment + SLA agents called in parallel via asyncio.gather',
+    desc: 'Decision gate + SLA run in parallel. Sentiment waits for the gate.',
     color: '#a78bfa',
   },
   {
-    id: 'sentiment',
-    label: 'Sentiment',
-    agent: 'sentiment-agent',
-    icon: '💬',
-    desc: 'Claude analyzes tone, urgency, and frustration level',
-    color: '#fbbf24',
+    id: 'gate',
+    label: 'Gate',
+    agent: 'gate-agent',
+    icon: '🚦',
+    desc: 'One Ollama /v1/systemone call classifies team, urgency, threat, and escalation',
+    color: '#c4b5fd',
   },
   {
     id: 'sla',
@@ -37,11 +37,19 @@ const STAGES = [
     color: '#34d399',
   },
   {
+    id: 'sentiment',
+    label: 'Sentiment',
+    agent: 'sentiment-agent',
+    icon: '💬',
+    desc: 'Full path only: tone, urgency, and frustration. Skipped when the gate is confident.',
+    color: '#fbbf24',
+  },
+  {
     id: 'routing',
     label: 'AI Routing',
     agent: 'triage-orchestrator',
     icon: '🎯',
-    desc: 'Orchestrator calls app.ai() with all signals to decide routing',
+    desc: 'Full path only: app.ai() picks team and escalation. Skipped when the gate is confident.',
     color: '#38bdf8',
   },
   {
@@ -91,6 +99,15 @@ function Stage({ stage, active, done, skipped, result }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: done ? 'var(--text)' : 'var(--text3)' }}>
             {stage.label}
           </span>
+          {skipped && (
+            <span style={{
+              fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
+              color: 'var(--text3)', border: '1px solid var(--border2)',
+              padding: '1px 6px', borderRadius: 3,
+            }}>
+              skipped
+            </span>
+          )}
           <span style={{
             fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
             color: stage.color, background: stage.color + '15',
@@ -102,7 +119,7 @@ function Stage({ stage, active, done, skipped, result }) {
         <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.55 }}>
           {stage.desc}
         </div>
-        {done && result && (
+        {(done || skipped) && result && (
           <div style={{
             marginTop: 6, padding: '6px 10px',
             background: stage.color + '10',
@@ -129,14 +146,27 @@ export default function PipelineTrace({ executionResult, isRunning }) {
   const r = executionResult || {}
   const sentiment = r.sentiment || {}
   const escalated = r.escalated
+  const gate = r.gate || {}
+  const fast = r.decision_path === 'fast'
+  const gateConfidence = gate.confidence == null ? null : `${Math.round(gate.confidence * 100)}%`
+  const gateLatency = r.gate_latency_ms == null ? '—' : `${r.gate_latency_ms}ms`
 
   // Build per-stage status
   const stageResults = {
-    intake:     `ticket_id=${r.ticket_id}  tier=${r.ticket_id ? (executionResult ? '✓' : '…') : ''}`,
-    fanout:     'asyncio.gather(sentiment-agent.analyze, sla-agent.get_policy)',
-    sentiment:  sentiment.urgency ? `${sentiment.label} · urgency=${sentiment.urgency} · frustration=${sentiment.frustration_level}/10` : null,
+    intake:     r.ticket_id ? `ticket_id=${r.ticket_id}` : null,
+    fanout:     'asyncio.gather(gate-agent.decide, sla-agent.get_policy)',
+    gate:       gate.ok
+      ? `ok · confidence=${gateConfidence} · latency=${gateLatency} · path=${r.decision_path || '—'}`
+      : (r.decision_path
+          ? `unavailable — ${gate.error || 'error'} · path=${r.decision_path}`
+          : null),
     sla:        r.sla_minutes ? `sla_minutes=${r.sla_minutes}  priority_boost=${r.priority_boost}` : null,
-    routing:    r.team ? `→ team=${r.team}  escalate=${r.escalated}  confidence=${Math.round((r.confidence||0)*100)}%` : null,
+    sentiment:  fast
+      ? 'skipped — fast path used the gate'
+      : (sentiment.urgency ? `${sentiment.label} · urgency=${sentiment.urgency} · frustration=${sentiment.frustration_level}/10` : null),
+    routing:    fast
+      ? 'skipped — team taken from the gate'
+      : (r.team ? `→ team=${r.team}  escalate=${r.escalated}  confidence=${Math.round((r.confidence||0)*100)}%` : null),
     escalation: r.escalation?.case_id ? `case_id=${r.escalation.case_id}  severity=${r.escalation.severity}` : (escalated === false ? 'skipped — escalation not needed' : null),
   }
 
@@ -161,8 +191,10 @@ export default function PipelineTrace({ executionResult, isRunning }) {
 
       <div style={styles.stages}>
         {STAGES.map((stage, i) => {
-          const isEscalation = stage.id === 'escalation'
-          const skipped = isEscalation && allDone && !escalated
+          const skipped = allDone && (
+            (stage.id === 'escalation' && !escalated) ||
+            (fast && (stage.id === 'sentiment' || stage.id === 'routing'))
+          )
           const done = allDone && !skipped
           const active = isRunning && !allDone
 

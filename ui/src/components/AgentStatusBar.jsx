@@ -1,11 +1,4 @@
-import { useAgents } from '../hooks/useAgents'
-
-const KNOWN_AGENTS = [
-  { id: 'triage-orchestrator', label: 'Orchestrator', icon: '🎯' },
-  { id: 'sentiment-agent',     label: 'Sentiment',    icon: '💬' },
-  { id: 'sla-agent',           label: 'SLA',          icon: '⏱️' },
-  { id: 'escalation-agent',    label: 'Escalation',   icon: '🚨' },
-]
+import { useAgents, KNOWN_AGENTS } from '../hooks/useAgents'
 
 function StatusDot({ status }) {
   const color = status === 'online' ? '#34d399' : status === 'unknown' ? '#fbbf24' : '#f87171'

@@ -1,7 +1,8 @@
 # ═══════════════════════════════════════════════════════════════
 #  Customer Support Multi-Agent System
-#  AgentField + 4 Python Agents + React UI + nginx
+#  AgentField + 5 Python Agents + React UI + nginx
 #  LLM: local Ollama (host.docker.internal)
+#  Decision gate: Ollama POST /v1/systemone (tev1:0.8b)
 # ═══════════════════════════════════════════════════════════════
 
 networks:
@@ -43,12 +44,15 @@ services:
     depends_on:
       agentfield-server:
         condition: service_started
+      gate-agent:
+        condition: service_started
     networks:
       - agentfield-net
     environment:
       - AGENTFIELD_SERVER=http://agentfield-server:8080
       - AGENT_CALLBACK_URL=http://orchestrator:9001
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - GATE_CONFIDENCE_MIN=${GATE_CONFIDENCE_MIN:-0.7}
       - AGENT_NODE_ID=triage-orchestrator
       - AGENT_PORT=9001
     healthcheck:
@@ -130,7 +134,34 @@ services:
       retries: 5
       start_period: 15s
 
-  # ── 6. REACT UI + NGINX REVERSE PROXY ─────────────────────
+  # ── 6. DECISION GATE ──────────────────────────────────────
+  gate-agent:
+    build:
+      context: ./agents/gate
+    container_name: gate-agent
+    restart: unless-stopped
+    depends_on:
+      agentfield-server:
+        condition: service_started
+    networks:
+      - agentfield-net
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield-server:8080
+      - AGENT_CALLBACK_URL=http://gate-agent:9005
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - SYSTEMONE_BASE=${SYSTEMONE_BASE:-http://host.docker.internal:11434}
+      - SYSTEMONE_MODEL=${SYSTEMONE_MODEL:-tev1:0.8b}
+      - SYSTEMONE_TIMEOUT_S=${SYSTEMONE_TIMEOUT_S:-3}
+      - AGENT_NODE_ID=gate-agent
+      - AGENT_PORT=9005
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 7. REACT UI + NGINX REVERSE PROXY ─────────────────────
   ui:
     build:
       context: ./ui

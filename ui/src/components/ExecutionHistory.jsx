@@ -51,6 +51,16 @@ export default function ExecutionHistory({ entries, onClear }) {
                     <span style={{ ...styles.badge, color: urgColor, borderColor: urgColor + '44', background: urgColor + '12' }}>
                       {urgIcon} {urgency}
                     </span>
+                    {r.decision_path && (
+                      <span style={{
+                        ...styles.badge,
+                        color: r.decision_path === 'fast' ? '#34d399' : '#38bdf8',
+                        borderColor: r.decision_path === 'fast' ? '#34d39944' : '#38bdf844',
+                        background: r.decision_path === 'fast' ? 'rgba(52,211,153,0.1)' : 'rgba(56,189,248,0.1)',
+                      }}>
+                        {r.decision_path} path
+                      </span>
+                    )}
                     {r.escalated && (
                       <span style={{ ...styles.badge, color: '#f87171', borderColor: '#f87171aa', background: 'rgba(248,113,113,0.1)' }}>
                         🚨 escalated

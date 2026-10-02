@@ -153,7 +153,7 @@ export default function TicketForm({ onSubmit, isSubmitting }) {
         <button type="submit" style={{ ...styles.submitBtn, opacity: canSubmit ? 1 : 0.4 }} disabled={!canSubmit}>
           {isSubmitting ? (
             <span style={styles.submitInner}>
-              <span style={styles.spinner} /> Analyzing with 4 AI agents...
+              <span style={styles.spinner} /> Running the triage pipeline...
             </span>
           ) : (
             <span style={styles.submitInner}>⚡ Run Triage Pipeline</span>

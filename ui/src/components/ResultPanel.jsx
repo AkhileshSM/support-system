@@ -20,6 +20,11 @@ const SEVERITY_COLORS = {
   P3: { bg: 'rgba(251,191,36,0.15)',  text: '#fbbf24' },
 }
 
+const PATH_COLORS = {
+  fast: { bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.35)', text: '#34d399' },
+  full: { bg: 'rgba(56,189,248,0.10)', border: 'rgba(56,189,248,0.35)', text: '#38bdf8' },
+}
+
 function Badge({ label, color }) {
   return (
     <span style={{
@@ -69,7 +74,7 @@ export default function ResultPanel({ result, executionId, durationMs, status, e
         <div style={styles.errorBody}>
           <p style={{ color: 'var(--red)', marginBottom: 8 }}>{error}</p>
           <p style={{ color: 'var(--text2)', fontSize: 12 }}>
-            Check that all 4 agent containers are running and healthy. The control plane must be reachable at port 8080.
+            Check that the agent containers are running and healthy. The control plane must be reachable at port 8080.
           </p>
         </div>
       </div>
@@ -80,17 +85,25 @@ export default function ResultPanel({ result, executionId, durationMs, status, e
 
   const sentiment = result.sentiment || {}
   const escalation = result.escalation
+  const gate = result.gate || {}
   const urg = URGENCY_COLORS[sentiment.urgency] || URGENCY_COLORS.low
   const teamIcon = TEAM_ICONS[result.team] || '📋'
   const confidencePct = Math.round((result.confidence || 0) * 100)
+  const pathKey = result.decision_path === 'fast' ? 'fast' : result.decision_path === 'full' ? 'full' : null
+  const pathColor = PATH_COLORS[pathKey] || PATH_COLORS.full
+  const gateConfidence = gate.ok && gate.confidence != null
+    ? `${Math.round(gate.confidence * 100)}%`
+    : null
+  const gateError = gate.error ? String(gate.error).slice(0, 160) : ''
 
   return (
     <div style={styles.card}>
       {/* ── Header ─────────────────────────────────────────── */}
       <div style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={styles.successDot} />
           <span style={styles.headerTitle}>Triage Complete</span>
+          {pathKey && <Badge label={`${pathKey} path`} color={pathColor} />}
           <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono, monospace' }}>
             {durationMs ? `${(durationMs / 1000).toFixed(2)}s` : ''}
           </span>
@@ -152,6 +165,31 @@ export default function ResultPanel({ result, executionId, durationMs, status, e
             </div>
           </div>
 
+          {/* ── Decision gate ──────────────────────────────── */}
+          <div style={styles.section}>
+            <div style={styles.sectionTitle}>Decision Gate</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <Row label="Path">
+                {pathKey ? <Badge label={pathKey} color={pathColor} /> : '—'}
+              </Row>
+              <Row label="Confidence">
+                {gateConfidence ? (
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{gateConfidence}</span>
+                ) : (
+                  <span style={{ color: 'var(--text3)' }}>
+                    {gateError ? `unavailable — ${gateError}` : 'unavailable'}
+                  </span>
+                )}
+              </Row>
+              <Row label="Latency">
+                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                  {result.gate_latency_ms != null ? `${result.gate_latency_ms} ms` : '—'}
+                  {gate.model ? ` · ${gate.model}` : ''}
+                </span>
+              </Row>
+            </div>
+          </div>
+
           {/* ── Summary ────────────────────────────────────── */}
           <div style={styles.section}>
             <div style={styles.sectionTitle}>AI Summary</div>
@@ -163,6 +201,11 @@ export default function ResultPanel({ result, executionId, durationMs, status, e
           {/* ── Sentiment Detail ───────────────────────────── */}
           <div style={styles.section}>
             <div style={styles.sectionTitle}>Sentiment Analysis</div>
+            {pathKey === 'fast' && (
+              <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: -6, marginBottom: 8 }}>
+                Synthesized from the decision gate. The sentiment model did not run.
+              </p>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               <Row label="Emotion">
                 <span style={{ fontFamily: 'JetBrains Mono, monospace', color: urg.text }}>

@@ -3,7 +3,7 @@
 #  Usage: make <target>
 # ═══════════════════════════════════════════════════════════════
 
-.PHONY: help up down build logs restart ui-dev clean check-env
+.PHONY: help up down build logs restart ui-dev clean check-env pull-gate-model eval
 
 ## Show this help
 help:
@@ -11,7 +11,15 @@ help:
 
 ## Copy .env.example → .env (edit before running)
 setup:
-	@cp -n .env.example .env && echo "✓ Created .env — add your ANTHROPIC_API_KEY" || echo "! .env already exists"
+	@cp -n .env.example .env && echo "✓ Created .env — set OLLAMA_API_BASE if Ollama is not on port 11434" || echo "! .env already exists"
+
+## Pull the local System One model used by the decision gate (default tev1:0.8b)
+pull-gate-model:
+	ollama pull $${SYSTEMONE_MODEL:-tev1:0.8b}
+
+## Compare the decision gate with the existing two-call path (Ollama on localhost)
+eval:
+	SYSTEMONE_BASE=$${SYSTEMONE_BASE:-http://127.0.0.1:11434} python3 eval/run_eval.py
 
 ## Build all containers
 build:
